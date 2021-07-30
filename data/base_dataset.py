@@ -1,6 +1,8 @@
+from numpy.core.records import array
 import torch.utils.data as data
 from PIL import Image
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as ft
 import numpy as np
 import random
 
@@ -32,6 +34,10 @@ def get_params(opt, size):
 
 def get_transform(opt, params, method=Image.BICUBIC, normalize=True):
     transform_list = []
+
+    transform_list += [transforms.Lambda(lambda img: transforms.ToTensor()(np.array(img)))] 
+    # Converted to numpy array first to supress exessive error messages.
+    
     if 'resize' in opt.resize_or_crop:
         osize = [opt.loadSize, opt.loadSize]
         transform_list.append(transforms.Scale(osize, method))   
@@ -50,15 +56,14 @@ def get_transform(opt, params, method=Image.BICUBIC, normalize=True):
     if opt.isTrain and not opt.no_flip:
         transform_list.append(transforms.Lambda(lambda img: __flip(img, params['flip'])))
 
-    transform_list += [transforms.ToTensor()]
 
     if normalize:
-        transform_list += [transforms.Normalize((0.5, 0.5, 0.5),
-                                                (0.5, 0.5, 0.5))]
+        transform_list.append(transforms.Lambda(lambda img: __normalize(img)))
+
     return transforms.Compose(transform_list)
 
-def normalize():    
-    return transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+def __normalize(img):   
+    return ft.normalize(img, img.shape[0]*(.5,), img.shape[0]*(.5,))
 
 def __make_power_2(img, base, method=Image.BICUBIC):
     ow, oh = img.size        
@@ -66,25 +71,30 @@ def __make_power_2(img, base, method=Image.BICUBIC):
     w = int(round(ow / base) * base)
     if (h == oh) and (w == ow):
         return img
-    return img.resize((w, h), method)
+    return transforms.Resize((w, h), method)
 
 def __scale_width(img, target_width, method=Image.BICUBIC):
-    ow, oh = img.size
+    oh, ow = img.shape[1:]
     if (ow == target_width):
         return img    
     w = target_width
-    h = int(target_width * oh / ow)    
-    return img.resize((w, h), method)
+    h = int(target_width * oh/ow)   
+    return ft.resize(img, (h, w), method)
 
 def __crop(img, pos, size):
-    ow, oh = img.size
+    ow, oh = img.shape[1:]
     x1, y1 = pos
     tw = th = size
-    if (ow > tw or oh > th):        
-        return img.crop((x1, y1, x1 + tw, y1 + th))
+    
+    if (ow > tw or oh > th):    
+        img = ft.crop(img, y1, x1, th, tw)
+        return ft.pad(img, [0, 0,  th-img.shape[2], tw - img.shape[1]])
     return img
 
 def __flip(img, flip):
     if flip:
-        return img.transpose(Image.FLIP_LEFT_RIGHT)
+        return ft.hflip(img)
     return img
+    
+def normalize():    
+    return transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))

@@ -4,8 +4,12 @@ from data.base_data_loader import BaseDataLoader
 
 def CreateDataset(opt):
     dataset = None
-    from data.aligned_dataset import AlignedDataset
-    dataset = AlignedDataset()
+    if opt.image_format == 'png':
+        from data.aligned_dataset import AlignedDataset
+        dataset = AlignedDataset()
+    elif opt.image_format == 'npy':
+        from data.np_aligned_dataset import NumpyAlignedDataset
+        dataset = NumpyAlignedDataset()
 
     print("dataset [%s] was created" % (dataset.name()))
     dataset.initialize(opt)

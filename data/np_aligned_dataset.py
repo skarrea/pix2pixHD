@@ -35,10 +35,10 @@ class NumpyAlignedDataset(BaseDataset):
         A_path = self.A_paths[index]              
         A = np.load(A_path)
         params = get_params(self.opt, A.shape[:2])
-        if self.opt.label_nc == 0:
-            transform_A = get_transform(self.opt, params)
+        if self.opt.label_nc == 0: # If no labels are used
+            transform_A = get_transform(self.opt, params, normalize=False)
             A_tensor = transform_A(A)
-        else:
+        else: # With labels we use a nearest neighbour interpolator for resizing.
             transform_A = get_transform(self.opt, params, method=Image.NEAREST, normalize=False)
             A_tensor = transform_A(A)
 
@@ -48,7 +48,7 @@ class NumpyAlignedDataset(BaseDataset):
             B_path = self.B_paths[index]   
             B = np.load(B_path)
             B = np.stack((B,)*3, axis=-1) if B.ndim == 2 else B
-            transform_B = get_transform(self.opt, params)      
+            transform_B = get_transform(self.opt, params, normalize=False)      
 
             B_tensor = transform_B(B)
 
@@ -61,7 +61,7 @@ class NumpyAlignedDataset(BaseDataset):
         return len(self.A_paths) // self.opt.batchSize * self.opt.batchSize
 
     def name(self):
-        return 'AlignedDataset'
+        return 'NpArrayAlignedDataset'
 
     def validate_options(self):
         expected_values = {
@@ -70,6 +70,10 @@ class NumpyAlignedDataset(BaseDataset):
             'image_format' : 'npy',
             'load_features' : False
         }
+        if self.opt.phase == 'test':
+            expected_values['engine'] = None
+            expected_values['onnx'] = None
+
         for key in expected_values.keys():
             assert expected_values[key] == getattr(self.opt, key), \
                 f'Expected the value {expected_values[key]} for {key} ' \

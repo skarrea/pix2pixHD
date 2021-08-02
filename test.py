@@ -8,6 +8,8 @@ import util.util as util
 from util.visualizer import Visualizer
 from util import html
 import torch
+import numpy as np
+from pathlib import Path
 
 opt = TestOptions().parse(save=False)
 opt.nThreads = 1   # test code only supports nThreads = 1
@@ -21,6 +23,10 @@ visualizer = Visualizer(opt)
 # create website
 web_dir = os.path.join(opt.results_dir, opt.name, '%s_%s' % (opt.phase, opt.which_epoch))
 webpage = html.HTML(web_dir, 'Experiment = %s, Phase = %s, Epoch = %s' % (opt.name, opt.phase, opt.which_epoch))
+
+if opt.save_npy:
+    npy_save_dir = os.path.join(web_dir, 'npyImages')
+    os.makedirs(npy_save_dir, exist_ok=True)
 
 # test
 if not opt.engine and not opt.onnx:
@@ -55,13 +61,20 @@ for i, data in enumerate(dataset):
         generated = run_trt_engine(opt.engine, minibatch, [data['label'], data['inst']])
     elif opt.onnx:
         generated = run_onnx(opt.onnx, opt.data_type, minibatch, [data['label'], data['inst']])
-    else:        
+    else:
         generated = model.inference(data['label'], data['inst'], data['image'])
-        
+
     visuals = OrderedDict([('input_label', util.tensor2label(data['label'][0], opt.label_nc)),
                            ('synthesized_image', util.tensor2im(generated.data[0]))])
+    
     img_path = data['path']
     print('process image... %s' % img_path)
+    if opt.save_npy:
+        tmp_path = Path(img_path[0])
+        npy_path = os.path.join(npy_save_dir, tmp_path.stem + '_fake_B.npy')
+        np.save(npy_path, generated.data[0].cpu().numpy())
+
     visualizer.save_images(webpage, visuals, img_path)
+    
 
 webpage.save()

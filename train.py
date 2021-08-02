@@ -6,6 +6,10 @@ from torch.autograd import Variable
 from collections import OrderedDict
 from subprocess import call
 import fractions
+import copy
+
+from torch.nn.modules.loss import MSELoss
+
 def lcm(a,b): return abs(a * b)/fractions.gcd(a,b) if a and b else 0
 
 from options.train_options import TrainOptions
@@ -53,6 +57,18 @@ display_delta = total_steps % opt.display_freq
 print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
 
+if opt.validation_freq:
+    validation_delta = total_steps % opt.validations_freq
+    valopt = copy.deepcopy(opt)
+    valopt.phase = 'val'
+    valDataset = CreateDataLoader(valopt)
+    valDataset_size = len(valDataset)
+    print('The number of validation images = %d' % valDataset_size)
+    del valopt # we don't need the validation options anymore.
+    with open('val_log.csv', 'w+') as f:
+        f.write('total_iter, epoch, val_loss, val_std\n'
+
+
 for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
@@ -62,7 +78,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             iter_start_time = time.time()
         total_steps += opt.batchSize
         epoch_iter += opt.batchSize
-
+        
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
 
@@ -103,6 +119,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             visualizer.print_current_errors(epoch, epoch_iter, errors, t)
             visualizer.plot_current_errors(errors, total_steps)
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
+        
+
 
         ### display output images
         if save_fake:
@@ -110,6 +128,15 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                                    ('synthesized_image', util.tensor2im(generated.data[0])),
                                    ('real_image', util.tensor2im(data['image'][0]))])
             visualizer.display_current_results(visuals, epoch, total_steps)
+        ### Calculate and display validation losses
+        if opt.validation_freq:
+            RMSE = torch.nn.MSELoss()
+            if total_steps % opt.validation_frq == validation_delta:
+                val_loss = torch.empty(len(valDataset))
+                for i, val_data in enumerate(valDataset):
+                    val_fake = model.inference(val_data['label'], val_data['inst'], val_data['image'])
+                    val_loss[i] = torch.sqrt(RMSE(val_fake, val_data['image']))
+                mean_val_loss, std_val_loss = torch.mean(val_loss), torch.std(val_loss)
 
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:

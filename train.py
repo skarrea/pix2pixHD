@@ -58,15 +58,16 @@ print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
 
 if opt.validation_freq:
-    validation_delta = total_steps % opt.validations_freq
+    validation_delta = total_steps % opt.validation_freq
     valopt = copy.deepcopy(opt)
     valopt.phase = 'val'
-    valDataset = CreateDataLoader(valopt)
-    valDataset_size = len(valDataset)
+    valDataLoader = CreateDataLoader(valopt)
+    valDataset = valDataLoader.load_data()
+    valDataset_size = len(valDataLoader)
     print('The number of validation images = %d' % valDataset_size)
     del valopt # we don't need the validation options anymore.
     with open('val_log.csv', 'w+') as f:
-        f.write('total_iter, epoch, val_loss, val_std\n'
+        f.write('total_iter, epoch, val_loss, val_std\n')
 
 
 for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
@@ -131,12 +132,20 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         ### Calculate and display validation losses
         if opt.validation_freq:
             RMSE = torch.nn.MSELoss()
-            if total_steps % opt.validation_frq == validation_delta:
-                val_loss = torch.empty(len(valDataset))
+            if total_steps % opt.validation_freq == validation_delta:
+                val_loss = torch.empty(len(valDataset)).to(torch.device('cuda'))
                 for i, val_data in enumerate(valDataset):
-                    val_fake = model.inference(val_data['label'], val_data['inst'], val_data['image'])
-                    val_loss[i] = torch.sqrt(RMSE(val_fake, val_data['image']))
+                    with torch.no_grad():
+                        _, val_generated = model(Variable(val_data['label']), Variable(val_data['inst']), 
+                            Variable(val_data['image']), Variable(val_data['feat']), infer=True)
+                        val_fake = val_generated.data[0] 
+                        # val_fake = model.inference(val_data['label'], val_data['inst'], val_data['image'])
+
+                    val_loss[i] = torch.sqrt(RMSE(val_fake.to(torch.device('cuda')), val_data['image'][0].to(torch.device('cuda'))) + 1e-6)
                 mean_val_loss, std_val_loss = torch.mean(val_loss), torch.std(val_loss)
+                t = (time.time() - iter_start_time) / opt.print_freq
+                visualizer.print_current_errors(epoch, epoch_iter, {'RMSE_mean_val' : mean_val_loss, 'RMSE_std_val' : std_val_loss}, t)
+                visualizer.plot_current_errors({'RMSE_mean_val' : mean_val_loss}, total_steps, scope = 'validation')
 
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:

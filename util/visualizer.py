@@ -101,10 +101,10 @@ class Visualizer():
             webpage.save()
 
     # errors: dictionary of error labels and values
-    def plot_current_errors(self, errors, step):
+    def plot_current_errors(self, errors, step, scope = 'training'):
         if self.tf_log:
             for tag, value in errors.items():
-                self.writer.add_scalar(tag, value, global_step=step)
+                self.writer.add_scalar('/'.join([scope, tag]), value, global_step=step)
                 # summary = self.tf.Summary(value=[self.tf.Summary.Value(tag=tag, simple_value=value)])
                 # self.writer.add_summary(summary, step)
 
